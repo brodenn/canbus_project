@@ -84,26 +84,32 @@ void mcp2515_init(SPI_HandleTypeDef* hspi) {
     mcp2515_write_register(hspi, MCP_CNF2, 0x90);
     mcp2515_write_register(hspi, MCP_CNF3, 0x02);
 
-    // Enter loopback mode for testing
-    mcp2515_set_mode(hspi, MODE_LOOPBACK);
+    // Enable RX interrupts
+    mcp2515_write_register(hspi, MCP_CANINTE, 0x03); // RX0IE | RX1IE
+
+    // Stay in normal mode by default (set externally later)
 }
 
-// --- Send one CAN frame (ID 0x123, data 01 02 03 04) ---
+// --- Send one test CAN frame ---
 void mcp2515_send_test_frame(SPI_HandleTypeDef* hspi) {
-    // Write 11-bit ID = 0x123 (SIDH/SIDL)
-    mcp2515_write_register(hspi, MCP_TXB0SIDH, 0x24);  // 0x123 >> 3
-    mcp2515_write_register(hspi, MCP_TXB0SIDL, 0x60);  // (0x123 << 5) & 0xE0
+    mcp2515_send_message(hspi, 0x123, (uint8_t[]){0x01, 0x02, 0x03, 0x04}, 4);
+}
 
-    // Write DLC = 4
-    mcp2515_write_register(hspi, MCP_TXB0DLC, 4);
+// --- Send custom CAN message (standard ID, up to 8 data bytes) ---
+void mcp2515_send_message(SPI_HandleTypeDef* hspi, uint16_t id, uint8_t* data, uint8_t len) {
+    if (len > 8) len = 8;
 
-    // Write 4 bytes of data
-    mcp2515_write_register(hspi, MCP_TXB0D0, 0x01);
-    mcp2515_write_register(hspi, MCP_TXB0D1, 0x02);
-    mcp2515_write_register(hspi, MCP_TXB0D2, 0x03);
-    mcp2515_write_register(hspi, MCP_TXB0D3, 0x04);
+    uint8_t idh = (uint8_t)(id >> 3);
+    uint8_t idl = (uint8_t)((id & 0x07) << 5);
 
-    // Request transmission
+    mcp2515_write_register(hspi, MCP_TXB0SIDH, idh);
+    mcp2515_write_register(hspi, MCP_TXB0SIDL, idl);
+    mcp2515_write_register(hspi, MCP_TXB0DLC, len);
+
+    for (uint8_t i = 0; i < len; i++) {
+        mcp2515_write_register(hspi, MCP_TXB0D0 + i, data[i]);
+    }
+
     mcp_select();
     mcp_transfer(hspi, MCP_RTS_TX0);
     mcp_deselect();

@@ -1,97 +1,143 @@
 #include "stm32f4xx_hal.h"
 #include "mcp2515.h"
+#include <string.h>
+#include <stdio.h>
 
-// Global SPI handle
+#define MCP_RXB1CTRL      0x70
+#define MCP_RXB1SIDH      0x71
+#define MCP_RXB1SIDL      0x72
+#define MCP_RXB1DLC       0x75
+#define MCP_RXB1D0        0x76
+
+#define CAN_RX_BUFFER_SIZE 32
+
+typedef struct {
+    uint16_t id;
+    uint8_t dlc;
+    uint8_t data[8];
+} CanRxFrame;
+
+volatile CanRxFrame can_rx_buffer[CAN_RX_BUFFER_SIZE];
+volatile uint8_t can_rx_head = 0;
+volatile uint8_t can_rx_tail = 0;
+
+UART_HandleTypeDef huart2;
 SPI_HandleTypeDef hspi1;
 
-// Function prototypes
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_SPI1_Init(void);
+void MX_USART2_UART_Init(void);
+void MX_GPIO_Init(void);
+void MX_SPI1_Init(void);
+
+void uart_print(const char* msg) {
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
+}
+
+void byte_to_hex(uint8_t byte, char* str) {
+    const char hex[] = "0123456789ABCDEF";
+    str[0] = hex[(byte >> 4) & 0x0F];
+    str[1] = hex[byte & 0x0F];
+    str[2] = '\0';
+}
+
+void SysTick_Handler(void) {
+    HAL_IncTick();
+    HAL_SYSTICK_IRQHandler();
+}
+
+void buffer_rx_frame(uint8_t sidh, uint8_t sidl, uint8_t dlc, uint8_t base_reg) {
+    uint16_t id = ((sidh << 3) | (sidl >> 5)) & 0x7FF;
+    if (dlc == 0 || dlc > 8) return;
+
+    uint8_t next = (can_rx_head + 1) % CAN_RX_BUFFER_SIZE;
+    if (next == can_rx_tail) return; // Buffer full
+
+    CanRxFrame* frame = &can_rx_buffer[can_rx_head];
+    frame->id = id;
+    frame->dlc = dlc;
+
+    for (uint8_t i = 0; i < dlc; i++) {
+        frame->data[i] = mcp2515_read_register(&hspi1, base_reg + i);
+    }
+
+    can_rx_head = next;
+}
+
+void print_rx_frame(const CanRxFrame* frame) {
+    char buf[64];
+    sprintf(buf, "RX Buffered: ID=0x%03X DLC=%d Data: ", frame->id, frame->dlc);
+    uart_print(buf);
+
+    for (uint8_t i = 0; i < frame->dlc; i++) {
+        char hex[4];
+        byte_to_hex(frame->data[i], hex);
+        uart_print(hex);
+        uart_print(" ");
+    }
+    uart_print("\r\n");
+}
 
 int main(void) {
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
+    MX_USART2_UART_Init();
     MX_SPI1_Init();
 
-    // Init MCP2515 (loopback mode for testing)
+    HAL_Delay(500);
+    uart_print("MCP2515 CAN TX/RX Setup...\r\n");
+
     mcp2515_init(&hspi1);
+    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60);
+    mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60);
+    mcp2515_set_mode(&hspi1, MODE_NORMAL);
+    uart_print("MCP2515 ready in NORMAL mode.\r\n");
+
+    uint8_t counter = 0;
+    uint32_t last_send_time = 0;
 
     while (1) {
-        mcp2515_send_test_frame(&hspi1);
-        HAL_Delay(1000);
+        if (HAL_GetTick() - last_send_time >= 1000) {
+            uint8_t tx_data[4] = { 0x55, 0xAA, 0x00, counter++ };
+            mcp2515_send_message(&hspi1, 0x321, tx_data, 4);
+            uart_print("Sent: ID=0x321 Data: ");
+            for (int i = 0; i < 4; i++) {
+                char hex[3];
+                byte_to_hex(tx_data[i], hex);
+                uart_print(hex);
+                uart_print(" ");
+            }
+            uart_print("\r\n");
+            last_send_time = HAL_GetTick();
+        }
+
+        uint8_t status = mcp2515_read_status(&hspi1);
+
+        if (status & 0x01) {
+            buffer_rx_frame(
+                mcp2515_read_register(&hspi1, MCP_RXB0SIDH),
+                mcp2515_read_register(&hspi1, MCP_RXB0SIDL),
+                mcp2515_read_register(&hspi1, MCP_RXB0DLC) & 0x0F,
+                MCP_RXB0D0
+            );
+            mcp2515_bit_modify(&hspi1, MCP_CANINTF, 0x01, 0x00);
+        }
+
+        if (status & 0x02) {
+            buffer_rx_frame(
+                mcp2515_read_register(&hspi1, MCP_RXB1SIDH),
+                mcp2515_read_register(&hspi1, MCP_RXB1SIDL),
+                mcp2515_read_register(&hspi1, MCP_RXB1DLC) & 0x0F,
+                MCP_RXB1D0
+            );
+            mcp2515_bit_modify(&hspi1, MCP_CANINTF, 0x02, 0x00);
+        }
+
+        while (can_rx_tail != can_rx_head) {
+            print_rx_frame(&can_rx_buffer[can_rx_tail]);
+            can_rx_tail = (can_rx_tail + 1) % CAN_RX_BUFFER_SIZE;
+        }
+
+        HAL_Delay(1);
     }
-}
-
-// -------------------------------
-// GPIO Initialization (PB6 = CS)
-// -------------------------------
-void MX_GPIO_Init(void) {
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-    // MCP2515 CS pin (PB6)
-    GPIO_InitStruct.Pin = GPIO_PIN_6;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    // Default CS high
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-}
-
-// -------------------------------
-// SPI1 Initialization (PA5/PA6/PA7)
-// -------------------------------
-void MX_SPI1_Init(void) {
-    __HAL_RCC_SPI1_CLK_ENABLE();
-
-    hspi1.Instance = SPI1;
-    hspi1.Init.Mode = SPI_MODE_MASTER;
-    hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-    hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-    hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-    hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-    hspi1.Init.NSS = SPI_NSS_SOFT;
-    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
-    hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-    hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-    hspi1.Init.CRCPolynomial = 10;
-    HAL_SPI_Init(&hspi1);
-}
-
-// -------------------------------
-// System Clock Configuration
-// -------------------------------
-void SystemClock_Config(void) {
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-    __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
-
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-    RCC_OscInitStruct.PLL.PLLM = 16;
-    RCC_OscInitStruct.PLL.PLLN = 336;
-    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-    RCC_OscInitStruct.PLL.PLLQ = 7;
-
-    HAL_RCC_OscConfig(&RCC_OscInitStruct);
-
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
-                                  RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-    HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
 }
