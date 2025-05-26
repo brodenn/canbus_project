@@ -80,6 +80,16 @@
     .blue { color: #007bff; }
     .gray { color: #888; }
     .orange { color: orange; }
+
+    .tile .label {
+      margin-top: 6px;
+      font-size: 13px;
+      background: #eee;
+      color: #333;
+      padding: 3px 8px;
+      display: inline-block;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
@@ -146,7 +156,7 @@
     function hexToTemperature(hexString) {
       if (hexString.length !== 4) return null;
       const raw = parseInt(hexString, 16);
-      return (raw / 256).toFixed(2); // interpret as 8.8 fixed point
+      return (raw / 256).toFixed(2);
     }
 
     function updateDashboard(data) {
@@ -215,7 +225,6 @@
         .then(data => {
           updateDashboard(data);
 
-          // Filtered list
           const filtered = selected === "all" ? data : data.filter(m => m.label === selected);
           document.getElementById("output").innerHTML =
             filtered.map(m => `
@@ -226,7 +235,6 @@
               </div>
             `).join("");
 
-          // Update chart
           const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
           tempMsgs.forEach(m => {
             const t = hexToTemperature(m.data);
