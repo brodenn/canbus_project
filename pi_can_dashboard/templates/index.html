@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CAN Monitor</title>
+  <meta http-equiv="refresh" content="2">
+</head>
+<body>
+  <h2>Live CAN Data</h2>
+  <div id="output"></div>
+  <script>
+    fetch("/api/can")
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById("output").innerHTML =
+          data.map(m => `<p>${m.timestamp} → ID: ${m.id} = ${m.data}</p>`).join("");
+      });
+  </script>
+</body>
+</html>
