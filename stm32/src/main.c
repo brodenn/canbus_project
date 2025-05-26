@@ -88,26 +88,48 @@ int main(void) {
     uart_print("MCP2515 CAN TX/RX Setup...\r\n");
 
     mcp2515_init(&hspi1);
-    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60);
+    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60); // accept all
     mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60);
     mcp2515_set_mode(&hspi1, MODE_NORMAL);
     uart_print("MCP2515 ready in NORMAL mode.\r\n");
 
     uint8_t counter = 0;
+    uint8_t toggle = 0;
     uint32_t last_send_time = 0;
 
     while (1) {
         if (HAL_GetTick() - last_send_time >= 1000) {
-            uint8_t tx_data[4] = { 0x55, 0xAA, 0x00, counter++ };
-            mcp2515_send_message(&hspi1, 0x321, tx_data, 4);
-            uart_print("Sent: ID=0x321 Data: ");
-            for (int i = 0; i < 4; i++) {
-                char hex[3];
-                byte_to_hex(tx_data[i], hex);
-                uart_print(hex);
-                uart_print(" ");
-            }
-            uart_print("\r\n");
+            // 1. Self Test
+            uint8_t self_test[4] = { 0x55, 0xAA, 0x00, counter++ };
+            mcp2515_send_message(&hspi1, 0x321, self_test, 4);
+            uart_print("Sent 0x321: STM32 Test\r\n");
+
+            // 2. High Beam Toggle
+            uint8_t high_beam[1] = { toggle };
+            mcp2515_send_message(&hspi1, 0x110, high_beam, 1);
+            uart_print(toggle ? "Sent 0x110: High Beam ON\r\n" : "Sent 0x110: High Beam OFF\r\n");
+
+            // 3. Battery Alert (simulated low voltage 11.6V)
+            uint8_t battery_alert[2] = { 0x11, 0x48 }; // dummy values
+            mcp2515_send_message(&hspi1, 0x120, battery_alert, 2);
+            uart_print("Sent 0x120: Battery Voltage Low\r\n");
+
+            // 4. Crash Sensor Trigger
+            uint8_t crash_trigger[2] = { 0xDE, 0xAD };
+            mcp2515_send_message(&hspi1, 0x130, crash_trigger, 2);
+            uart_print("Sent 0x130: Crash Trigger\r\n");
+
+            // 5. Temperature (22.5°C as fixed-point)
+            uint8_t temp_data[2] = { 0x16, 0x80 }; // 22.5 in 8.8 fixed point
+            mcp2515_send_message(&hspi1, 0x140, temp_data, 2);
+            uart_print("Sent 0x140: Temperature 22.5°C\r\n");
+
+            // 6. Blinker Pattern
+            uint8_t blinker[1] = { toggle };
+            mcp2515_send_message(&hspi1, 0x150, blinker, 1);
+            uart_print(toggle ? "Sent 0x150: Blinker RIGHT\r\n" : "Sent 0x150: Blinker LEFT\r\n");
+
+            toggle ^= 1;
             last_send_time = HAL_GetTick();
         }
 
