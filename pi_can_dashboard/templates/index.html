@@ -110,7 +110,7 @@
 
   <div id="output"></div>
 
-  <div id="chartContainer">
+  <div id="chartContainer" style="display: none;">
     <h3>Live Temperature Chart</h3>
     <canvas id="tempChart" width="600" height="300"></canvas>
   </div>
@@ -137,6 +137,7 @@
     });
 
     const lastSeen = {};
+    let tempGraphCounter = 0;
 
     function formatTimestamp(ts) {
       const d = new Date(ts * 1000);
@@ -219,6 +220,8 @@
 
     function updateMessages() {
       const selected = document.getElementById("filter").value;
+      const showChart = selected === "Temperature Sensor";
+      document.getElementById("chartContainer").style.display = showChart ? "block" : "none";
 
       fetch("/api/can")
         .then(res => res.json())
@@ -235,12 +238,12 @@
               </div>
             `).join("");
 
-          const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
-          tempMsgs.forEach(m => {
-            const t = hexToTemperature(m.data);
-            if (t !== null) {
-              const ts = formatTimestamp(m.timestamp);
-              if (!tempChart.data.labels.includes(ts)) {
+          if (showChart) {
+            const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
+            tempMsgs.forEach(m => {
+              const t = hexToTemperature(m.data);
+              if (t !== null) {
+                const ts = formatTimestamp(m.timestamp) + "." + tempGraphCounter++;
                 tempChart.data.labels.push(ts);
                 tempChart.data.datasets[0].data.push(t);
                 if (tempChart.data.labels.length > 20) {
@@ -248,15 +251,23 @@
                   tempChart.data.datasets[0].data.shift();
                 }
               }
-            }
-          });
-          tempChart.update();
+            });
+            tempChart.update();
+          } else {
+            tempChart.data.labels = [];
+            tempChart.data.datasets[0].data = [];
+            tempChart.update();
+          }
         });
     }
 
-    document.getElementById("filter").addEventListener("change", updateMessages);
+    document.getElementById("filter").addEventListener("change", () => {
+      tempGraphCounter = 0;
+      updateMessages();
+    });
+
     updateMessages();
-    setInterval(updateMessages, 500); // ✅ Faster refresh
+    setInterval(updateMessages, 500);
   </script>
 </body>
 </html>
