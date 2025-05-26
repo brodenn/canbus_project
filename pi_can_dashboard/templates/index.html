@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>CAN Monitor</title>
-  <meta http-equiv="refresh" content="2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -36,13 +36,64 @@
     .Temp { background-color: #17a2b8; }
     .Blinker { background-color: #6f42c1; }
     .Unknown { background-color: #aaa; }
+
+    #filter {
+      margin-bottom: 10px;
+      padding: 6px;
+      font-size: 16px;
+    }
+
+    #chartContainer {
+      margin-top: 40px;
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
   </style>
 </head>
 <body>
   <h2>Live CAN Data</h2>
+
+  <label for="filter">Filter by label:</label>
+  <select id="filter">
+    <option value="all">All</option>
+    <option value="STM32 Test">STM32 Test</option>
+    <option value="High Beam">High Beam</option>
+    <option value="Battery Warning">Battery Warning</option>
+    <option value="Crash Trigger">Crash Trigger</option>
+    <option value="Temperature Sensor">Temperature Sensor</option>
+    <option value="Blinker">Blinker</option>
+  </select>
+
   <div id="output"></div>
 
+  <div id="chartContainer">
+    <h3>Live Temperature Chart</h3>
+    <canvas id="tempChart" width="600" height="300"></canvas>
+  </div>
+
   <script>
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const tempChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Temperature (°C)',
+          data: [],
+          borderColor: '#17a2b8',
+          tension: 0.2
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: 'Time' }},
+          y: { title: { display: true, text: '°C' }, suggestedMin: 0, suggestedMax: 100 }
+        }
+      }
+    });
+
     function formatTimestamp(ts) {
       const d = new Date(ts * 1000);
       return d.toLocaleTimeString('sv-SE', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
@@ -58,18 +109,52 @@
       return "Unknown";
     }
 
-    fetch("/api/can")
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById("output").innerHTML =
-          data.map(m => `
-            <div class="message">
-              ${formatTimestamp(m.timestamp)} →
-              <span class="label ${getClass(m.label)}">[${m.label}]</span>
-              ID: ${m.id} = ${m.data}
-            </div>
-          `).join("");
-      });
+    function hexToTemperature(hexString) {
+      if (hexString.length !== 4) return null;
+      const raw = parseInt(hexString, 16);
+      return (raw / 256).toFixed(2); // interpret as 8.8 fixed point
+    }
+
+    function updateMessages() {
+      const selected = document.getElementById("filter").value;
+
+      fetch("/api/can")
+        .then(res => res.json())
+        .then(data => {
+          // Filtered messages
+          const filtered = selected === "all" ? data : data.filter(m => m.label === selected);
+          document.getElementById("output").innerHTML =
+            filtered.map(m => `
+              <div class="message">
+                ${formatTimestamp(m.timestamp)} →
+                <span class="label ${getClass(m.label)}">[${m.label}]</span>
+                ID: ${m.id} = ${m.data}
+              </div>
+            `).join("");
+
+          // Update temperature chart
+          const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
+          tempMsgs.forEach(m => {
+            const t = hexToTemperature(m.data);
+            if (t !== null) {
+              const ts = formatTimestamp(m.timestamp);
+              if (!tempChart.data.labels.includes(ts)) {
+                tempChart.data.labels.push(ts);
+                tempChart.data.datasets[0].data.push(t);
+                if (tempChart.data.labels.length > 20) {
+                  tempChart.data.labels.shift();
+                  tempChart.data.datasets[0].data.shift();
+                }
+              }
+            }
+          });
+          tempChart.update();
+        });
+    }
+
+    document.getElementById("filter").addEventListener("change", updateMessages);
+    updateMessages();
+    setInterval(updateMessages, 2000);
   </script>
 </body>
 </html>
