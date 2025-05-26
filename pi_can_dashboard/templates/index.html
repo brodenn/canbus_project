@@ -256,7 +256,7 @@
 
     document.getElementById("filter").addEventListener("change", updateMessages);
     updateMessages();
-    setInterval(updateMessages, 2000);
+    setInterval(updateMessages, 500); // ✅ Faster refresh
   </script>
 </body>
 </html>
