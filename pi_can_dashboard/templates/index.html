@@ -9,9 +9,11 @@
       margin: 20px;
       background-color: #f2f2f2;
     }
+
     h2 {
       color: #333;
     }
+
     .message {
       background: white;
       margin-bottom: 5px;
@@ -19,10 +21,21 @@
       border-radius: 5px;
       box-shadow: 0 0 3px rgba(0,0,0,0.1);
     }
+
     .label {
       font-weight: bold;
-      color: #005cbf;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: white;
     }
+
+    .STM32 { background-color: #555; }
+    .HighBeam { background-color: #007bff; }
+    .Battery { background-color: #ffc107; color: #000; }
+    .Crash { background-color: #dc3545; }
+    .Temp { background-color: #17a2b8; }
+    .Blinker { background-color: #6f42c1; }
+    .Unknown { background-color: #aaa; }
   </style>
 </head>
 <body>
@@ -35,14 +48,24 @@
       return d.toLocaleTimeString('sv-SE', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
     }
 
+    function getClass(label) {
+      if (label.includes("STM32")) return "STM32";
+      if (label.includes("High Beam")) return "HighBeam";
+      if (label.includes("Battery")) return "Battery";
+      if (label.includes("Crash")) return "Crash";
+      if (label.includes("Temperature")) return "Temp";
+      if (label.includes("Blinker")) return "Blinker";
+      return "Unknown";
+    }
+
     fetch("/api/can")
       .then(res => res.json())
       .then(data => {
         document.getElementById("output").innerHTML =
           data.map(m => `
             <div class="message">
-              ${formatTimestamp(m.timestamp)} → 
-              <span class="label">[${m.label}]</span> 
+              ${formatTimestamp(m.timestamp)} →
+              <span class="label ${getClass(m.label)}">[${m.label}]</span>
               ID: ${m.id} = ${m.data}
             </div>
           `).join("");
