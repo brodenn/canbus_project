@@ -50,10 +50,42 @@
       border-radius: 8px;
       box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+
+    .tile {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .tile h3 {
+      margin-bottom: 10px;
+    }
+
+    .status {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .green { color: green; }
+    .red { color: red; }
+    .blue { color: #007bff; }
+    .gray { color: #888; }
+    .orange { color: orange; }
   </style>
 </head>
 <body>
-  <h2>Live CAN Data</h2>
+  <h2>Live CAN Module Status</h2>
+
+  <div class="dashboard" id="statusTiles"></div>
 
   <label for="filter">Filter by label:</label>
   <select id="filter">
@@ -94,6 +126,8 @@
       }
     });
 
+    const lastSeen = {};
+
     function formatTimestamp(ts) {
       const d = new Date(ts * 1000);
       return d.toLocaleTimeString('sv-SE', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
@@ -115,13 +149,73 @@
       return (raw / 256).toFixed(2); // interpret as 8.8 fixed point
     }
 
+    function updateDashboard(data) {
+      const now = Date.now() / 1000;
+      const tiles = {
+        "STM32 Test": { icon: "🚗", status: "Offline", class: "gray" },
+        "High Beam": { icon: "💡", status: "Unknown", class: "gray" },
+        "Battery Warning": { icon: "🔋", status: "OK", class: "green" },
+        "Crash Trigger": { icon: "💥", status: "OK", class: "green" },
+        "Temperature Sensor": { icon: "🌡️", status: "?", class: "gray" },
+        "Blinker": { icon: "🔁", status: "Unknown", class: "gray" }
+      };
+
+      data.forEach(msg => {
+        const label = msg.label;
+        const t = now - msg.timestamp;
+        lastSeen[label] = t;
+
+        if (label === "STM32 Test") {
+          tiles[label].status = t < 3 ? "✅ Alive" : "❌ Offline";
+          tiles[label].class = t < 3 ? "green" : "red";
+        }
+
+        if (label === "High Beam") {
+          tiles[label].status = msg.data === "01" ? "ON" : "OFF";
+          tiles[label].class = msg.data === "01" ? "blue" : "gray";
+        }
+
+        if (label === "Battery Warning") {
+          tiles[label].status = "⚠️ LOW";
+          tiles[label].class = "orange";
+        }
+
+        if (label === "Crash Trigger") {
+          tiles[label].status = "🔴 CRASH!";
+          tiles[label].class = "red";
+        }
+
+        if (label === "Temperature Sensor") {
+          const temp = hexToTemperature(msg.data);
+          tiles[label].status = `${temp} °C`;
+          tiles[label].class = "blue";
+        }
+
+        if (label === "Blinker") {
+          tiles[label].status = msg.data === "01" ? "RIGHT" : "LEFT";
+          tiles[label].class = "blue";
+        }
+      });
+
+      const tileDiv = document.getElementById("statusTiles");
+      tileDiv.innerHTML = Object.entries(tiles).map(([label, val]) => `
+        <div class="tile">
+          <h3>${val.icon} ${label}</h3>
+          <div class="status ${val.class}">${val.status}</div>
+          ${lastSeen[label] !== undefined ? `<div class="label">Seen ${Math.round(lastSeen[label])}s ago</div>` : ""}
+        </div>
+      `).join("");
+    }
+
     function updateMessages() {
       const selected = document.getElementById("filter").value;
 
       fetch("/api/can")
         .then(res => res.json())
         .then(data => {
-          // Filtered messages
+          updateDashboard(data);
+
+          // Filtered list
           const filtered = selected === "all" ? data : data.filter(m => m.label === selected);
           document.getElementById("output").innerHTML =
             filtered.map(m => `
@@ -132,7 +226,7 @@
               </div>
             `).join("");
 
-          // Update temperature chart
+          // Update chart
           const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
           tempMsgs.forEach(m => {
             const t = hexToTemperature(m.data);
