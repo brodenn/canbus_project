@@ -3,16 +3,49 @@
 <head>
   <title>CAN Monitor</title>
   <meta http-equiv="refresh" content="2">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f2f2f2;
+    }
+    h2 {
+      color: #333;
+    }
+    .message {
+      background: white;
+      margin-bottom: 5px;
+      padding: 8px 12px;
+      border-radius: 5px;
+      box-shadow: 0 0 3px rgba(0,0,0,0.1);
+    }
+    .label {
+      font-weight: bold;
+      color: #005cbf;
+    }
+  </style>
 </head>
 <body>
   <h2>Live CAN Data</h2>
   <div id="output"></div>
+
   <script>
+    function formatTimestamp(ts) {
+      const d = new Date(ts * 1000);
+      return d.toLocaleTimeString('sv-SE', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    }
+
     fetch("/api/can")
       .then(res => res.json())
       .then(data => {
         document.getElementById("output").innerHTML =
-          data.map(m => `<p>${m.timestamp} → ID: ${m.id} = ${m.data}</p>`).join("");
+          data.map(m => `
+            <div class="message">
+              ${formatTimestamp(m.timestamp)} → 
+              <span class="label">[${m.label}]</span> 
+              ID: ${m.id} = ${m.data}
+            </div>
+          `).join("");
       });
   </script>
 </body>
