@@ -99,7 +99,9 @@ int main(void) {
     float battery_voltage = 11.8;
     uint32_t last_send_time = 0;
     uint32_t last_crash_trigger = 0;
+
     uint8_t button_sent = 0;
+    uint8_t b1_state = 0; // ← toggle state: 0 = Released, 1 = Pressed
 
     while (1) {
         uint32_t now = HAL_GetTick();
@@ -147,16 +149,17 @@ int main(void) {
             last_send_time = now;
         }
 
-        // 🆕 Button B1 logic (PC13 is LOW when pressed)
+        // 🆕 Button B1 Toggle (PC13 is LOW when pressed)
         if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
             if (!button_sent) {
-                uint8_t button_msg[1] = { 0x01 };
+                b1_state ^= 1;  // toggle
+                uint8_t button_msg[1] = { b1_state };
                 mcp2515_send_message(&hspi1, 0x160, button_msg, 1);
-                uart_print("Sent 0x160: B1 Pressed\r\n");
+                uart_print(b1_state ? "Sent 0x160: B1 PRESSED\r\n" : "Sent 0x160: B1 Released\r\n");
                 button_sent = 1;
             }
         } else {
-            button_sent = 0;  // reset so next press sends again
+            button_sent = 0;
         }
 
         // CAN reception

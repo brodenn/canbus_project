@@ -132,20 +132,15 @@
       options: {
         responsive: true,
         scales: {
-          x: {
-            title: { display: true, text: 'Time' }
-          },
-          y: {
-            title: { display: true, text: '°C' },
-            suggestedMin: 0,
-            suggestedMax: 60
-          }
+          x: { title: { display: true, text: 'Time' } },
+          y: { title: { display: true, text: '°C' }, suggestedMin: 0, suggestedMax: 60 }
         }
       }
     });
 
     const lastSeen = {};
     let tempGraphCounter = 0;
+    let b1ToggleState = 0;
 
     function formatTimestamp(ts) {
       const d = new Date(ts * 1000);
@@ -178,7 +173,7 @@
         "Crash Trigger": { icon: "💥", status: "OK", class: "green" },
         "Temperature Sensor": { icon: "🌡️", status: "?", class: "gray" },
         "Blinker": { icon: "🔁", status: "Unknown", class: "gray" },
-        "Button B1": { icon: "🟢", status: "Not Pressed", class: "gray" }
+        "Button B1": { icon: "🟢", status: b1ToggleState ? "PRESSED" : "Released", class: b1ToggleState ? "green" : "gray" }
       };
 
       data.forEach(msg => {
@@ -206,8 +201,9 @@
           tiles[label].status = msg.data === "01" ? "➡️ RIGHT" : "⬅️ LEFT";
           tiles[label].class = "blue";
         } else if (label === "Button B1") {
-          tiles[label].status = msg.data === "01" ? "PRESSED" : "Released";
-          tiles[label].class = msg.data === "01" ? "green" : "gray";
+          b1ToggleState = msg.data === "01" ? 1 : 0;
+          tiles[label].status = b1ToggleState ? "PRESSED" : "Released";
+          tiles[label].class = b1ToggleState ? "green" : "gray";
         }
       });
 
