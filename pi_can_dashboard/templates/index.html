@@ -201,7 +201,8 @@
           tiles[label].status = msg.data === "01" ? "➡️ RIGHT" : "⬅️ LEFT";
           tiles[label].class = "blue";
         } else if (label === "Button B1") {
-          b1ToggleState = msg.data === "01" ? 1 : 0;
+          // ✅ Toggle on every new message (regardless of value)
+          b1ToggleState ^= 1;
           tiles[label].status = b1ToggleState ? "PRESSED" : "Released";
           tiles[label].class = b1ToggleState ? "green" : "gray";
         }
