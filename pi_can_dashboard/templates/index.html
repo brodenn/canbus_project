@@ -151,7 +151,8 @@
           tiles[label].status = "🔴 CRASH!";
           tiles[label].class = "red";
         } else if (label === "Temperature Sensor") {
-          tiles[label].status = `${parseInt(msg.data, 16) / 256} °C`;
+          const temp = (parseInt(msg.data, 16) / 256).toFixed(1);
+          tiles[label].status = `${temp} °C`;
           tiles[label].class = "blue";
         } else if (label === "Blinker") {
           tiles[label].status = msg.data === "01" ? "➡️ RIGHT" : "⬅️ LEFT";
@@ -199,7 +200,6 @@
     }
 
     document.getElementById("filter").addEventListener("change", updateMessages);
-
     updateMessages();
     setInterval(updateMessages, 500);
   </script>
