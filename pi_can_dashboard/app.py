@@ -8,12 +8,12 @@ import os
 app = Flask(__name__)
 buffer = deque(maxlen=100)
 
-# CAN IDs
+# CAN constants
 LED_CONTROL_ID = 0x170
-LED_STATUS_ID = "0x171"
+LED_STATUS_ID = 0x171
 led_state = 0
 
-# ID to label mapping
+# Label mapping
 ID_LABELS = {
     "0x321": "STM32 Test",
     "0x110": "High Beam",
@@ -25,7 +25,7 @@ ID_LABELS = {
     "0x171": "LED Status"
 }
 
-# Log setup
+# Log file setup
 LOG_PATH = "logs/can_log.csv"
 os.makedirs("logs", exist_ok=True)
 if not os.path.exists(LOG_PATH):
@@ -43,19 +43,21 @@ def log_to_csv(msg):
             msg["data"]
         ])
 
+# Persistent CAN bus
+can_bus = can.interface.Bus(channel='can0', interface='socketcan')
+
 def can_listener():
     global led_state
-    bus = can.interface.Bus(channel='can0', interface='socketcan')
     while True:
-        msg = bus.recv()
+        msg = can_bus.recv()
         entry = {
             "id": hex(msg.arbitration_id),
             "data": msg.data.hex(),
             "timestamp": msg.timestamp
         }
 
-        # Track LED state
-        if entry["id"] == LED_STATUS_ID and len(msg.data) > 0:
+        # Track LED state from STM32
+        if msg.arbitration_id == LED_STATUS_ID and len(msg.data) > 0:
             led_state = msg.data[0]
 
         buffer.append(entry)
@@ -79,13 +81,14 @@ def api_can():
 @app.route("/api/led", methods=["POST"])
 def toggle_led():
     global led_state
-    bus = can.interface.Bus(channel='can0', interface='socketcan')
     new_state = 0 if led_state else 1
     msg = can.Message(arbitration_id=LED_CONTROL_ID, data=[new_state], is_extended_id=False)
     try:
-        bus.send(msg)
+        can_bus.send(msg)
+        print(f"✅ Sent 0x170 with data: {new_state}")
         return "", 204
-    except can.CanError:
+    except can.CanError as e:
+        print(f"❌ CAN send failed: {e}")
         return "CAN send failed", 500
 
 if __name__ == "__main__":

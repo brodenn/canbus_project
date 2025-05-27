@@ -82,14 +82,16 @@ void handle_rx_frame(const CanRxFrame* frame) {
     if (frame->id == LED_CONTROL_ID && frame->dlc >= 1) {
         if (frame->data[0]) {
             HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-            uart_print("🟢 LED ON (via 0x170)\r\n");
+            uart_print("🟢 LD2 ON (via 0x170)\r\n");
         } else {
             HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-            uart_print("⚪ LED OFF (via 0x170)\r\n");
+            uart_print("⚪ LD2 OFF (via 0x170)\r\n");
         }
 
+        // Respond with actual LED state
         uint8_t led_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) ? 0x01 : 0x00;
         mcp2515_send_message(&hspi1, LED_STATUS_ID, &led_state, 1);
+        uart_print("↩️ Sent LED Status on 0x171\r\n");
     }
 }
 
@@ -104,8 +106,8 @@ int main(void) {
     uart_print("MCP2515 CAN TX/RX Setup...\r\n");
 
     mcp2515_init(&hspi1);
-    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60);
-    mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60);
+    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60); // Enable RXB0 receive all
+    mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60); // Enable RXB1 receive all
     mcp2515_set_mode(&hspi1, MODE_NORMAL);
     uart_print("MCP2515 ready in NORMAL mode.\r\n");
 
@@ -161,7 +163,7 @@ int main(void) {
             last_send_time = now;
         }
 
-        // 🟢 B1 Toggle Button
+        // Button B1 on PC13
         if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
             if (!button_sent) {
                 b1_state ^= 1;
@@ -174,7 +176,7 @@ int main(void) {
             button_sent = 0;
         }
 
-        // Receive loop
+        // RX from CAN
         uint8_t status = mcp2515_read_status(&hspi1);
         if (status & 0x01) {
             buffer_rx_frame(
