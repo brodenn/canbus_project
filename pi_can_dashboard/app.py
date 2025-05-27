@@ -15,7 +15,8 @@ ID_LABELS = {
     "0x120": "Battery Warning",
     "0x130": "Crash Trigger",
     "0x140": "Temperature Sensor",
-    "0x150": "Blinker"
+    "0x150": "Blinker",
+    "0x160": "Button B1 Pressed"  # ✅ NEW ENTRY
 }
 
 # Ensure logs folder exists
@@ -31,10 +32,15 @@ if not os.path.exists(LOG_PATH):
 def log_to_csv(msg):
     with open(LOG_PATH, "a", newline='') as f:
         writer = csv.writer(f)
-        writer.writerow([msg["timestamp"], msg["id"], ID_LABELS.get(msg["id"], "Unknown"), msg["data"]])
+        writer.writerow([
+            msg["timestamp"],
+            msg["id"],
+            ID_LABELS.get(msg["id"], "Unknown"),
+            msg["data"]
+        ])
 
 def can_listener():
-    bus = can.interface.Bus(channel='can0', bustype='socketcan')
+    bus = can.interface.Bus(channel='can0', interface='socketcan')  # Updated interface param
     while True:
         msg = bus.recv()
         entry = {

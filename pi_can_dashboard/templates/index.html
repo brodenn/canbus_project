@@ -29,6 +29,7 @@
     .Crash { background-color: #dc3545; }
     .Temp { background-color: #17a2b8; }
     .Blinker { background-color: #6f42c1; }
+    .B1 { background-color: #28a745; }
     .Unknown { background-color: #aaa; }
 
     #filter {
@@ -103,6 +104,7 @@
     <option value="Crash Trigger">Crash Trigger</option>
     <option value="Temperature Sensor">Temperature Sensor</option>
     <option value="Blinker">Blinker</option>
+    <option value="Button B1">Button B1</option>
   </select>
   <button onclick="resetFilter()">Reset</button>
 
@@ -157,6 +159,7 @@
       if (label.includes("Crash")) return "Crash";
       if (label.includes("Temperature")) return "Temp";
       if (label.includes("Blinker")) return "Blinker";
+      if (label.includes("Button B1")) return "B1";
       return "Unknown";
     }
 
@@ -174,7 +177,8 @@
         "Battery Warning": { icon: "🔋", status: "OK", class: "green" },
         "Crash Trigger": { icon: "💥", status: "OK", class: "green" },
         "Temperature Sensor": { icon: "🌡️", status: "?", class: "gray" },
-        "Blinker": { icon: "🔁", status: "Unknown", class: "gray" }
+        "Blinker": { icon: "🔁", status: "Unknown", class: "gray" },
+        "Button B1": { icon: "🟢", status: "Not Pressed", class: "gray" }
       };
 
       data.forEach(msg => {
@@ -185,27 +189,25 @@
         if (label === "STM32 Test") {
           tiles[label].status = t < 3 ? "✅ Alive" : "❌ Offline";
           tiles[label].class = t < 3 ? "green" : "red";
-        }
-        if (label === "High Beam") {
+        } else if (label === "High Beam") {
           tiles[label].status = msg.data === "01" ? "ON" : "OFF";
           tiles[label].class = msg.data === "01" ? "blue" : "gray";
-        }
-        if (label === "Battery Warning") {
+        } else if (label === "Battery Warning") {
           tiles[label].status = "⚠️ LOW";
           tiles[label].class = "orange";
-        }
-        if (label === "Crash Trigger") {
+        } else if (label === "Crash Trigger") {
           tiles[label].status = "🔴 CRASH!";
           tiles[label].class = "red";
-        }
-        if (label === "Temperature Sensor") {
+        } else if (label === "Temperature Sensor") {
           const temp = hexToTemperature(msg.data);
           tiles[label].status = `${temp} °C`;
           tiles[label].class = "blue";
-        }
-        if (label === "Blinker") {
+        } else if (label === "Blinker") {
           tiles[label].status = msg.data === "01" ? "➡️ RIGHT" : "⬅️ LEFT";
           tiles[label].class = "blue";
+        } else if (label === "Button B1") {
+          tiles[label].status = msg.data === "01" ? "PRESSED" : "Released";
+          tiles[label].class = msg.data === "01" ? "green" : "gray";
         }
       });
 

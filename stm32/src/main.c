@@ -50,7 +50,7 @@ void buffer_rx_frame(uint8_t sidh, uint8_t sidl, uint8_t dlc, uint8_t base_reg) 
     if (dlc == 0 || dlc > 8) return;
 
     uint8_t next = (can_rx_head + 1) % CAN_RX_BUFFER_SIZE;
-    if (next == can_rx_tail) return; // Buffer full
+    if (next == can_rx_tail) return;
 
     CanRxFrame* frame = &can_rx_buffer[can_rx_head];
     frame->id = id;
@@ -77,7 +77,6 @@ void print_rx_frame(const CanRxFrame* frame) {
     uart_print("\r\n");
 }
 
-
 int main(void) {
     HAL_Init();
     SystemClock_Config();
@@ -89,7 +88,7 @@ int main(void) {
     uart_print("MCP2515 CAN TX/RX Setup...\r\n");
 
     mcp2515_init(&hspi1);
-    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60); // accept all
+    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60);
     mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60);
     mcp2515_set_mode(&hspi1, MODE_NORMAL);
     uart_print("MCP2515 ready in NORMAL mode.\r\n");
@@ -100,33 +99,30 @@ int main(void) {
     float battery_voltage = 11.8;
     uint32_t last_send_time = 0;
     uint32_t last_crash_trigger = 0;
+    uint8_t button_sent = 0;
 
     while (1) {
         uint32_t now = HAL_GetTick();
 
         if (now - last_send_time >= 1000) {
-            // 1. STM32 Heartbeat
             uint8_t self_test[4] = { 0x55, 0xAA, 0x00, counter++ };
             mcp2515_send_message(&hspi1, 0x321, self_test, 4);
             uart_print("Sent 0x321: STM32 Test\r\n");
 
-            // 2. High Beam Toggle
             uint8_t high_beam[1] = { toggle };
             mcp2515_send_message(&hspi1, 0x110, high_beam, 1);
             uart_print(toggle ? "Sent 0x110: High Beam ON\r\n" : "Sent 0x110: High Beam OFF\r\n");
 
-            // 3. Battery Simulation: slight random drift 11.4V to 12.6V
             float voltage = battery_voltage + ((rand() % 5) - 2) * 0.05f;
             if (voltage < 11.4) voltage = 11.4;
             if (voltage > 12.6) voltage = 12.6;
-            uint16_t voltage_fixed = (uint16_t)(voltage * 100);  // example: 11.6V = 1160 = 0x0488
+            uint16_t voltage_fixed = (uint16_t)(voltage * 100);
             uint8_t battery_alert[2] = { (voltage_fixed >> 8) & 0xFF, voltage_fixed & 0xFF };
             mcp2515_send_message(&hspi1, 0x120, battery_alert, 2);
             char voltbuf[32];
             sprintf(voltbuf, "Sent 0x120: Battery %.2fV\r\n", voltage);
             uart_print(voltbuf);
 
-            // 4. Crash Trigger (every ~10s randomly)
             if ((rand() % 10) == 0 || (now - last_crash_trigger > 10000)) {
                 uint8_t crash_trigger[2] = { 0xDE, 0xAD };
                 mcp2515_send_message(&hspi1, 0x130, crash_trigger, 2);
@@ -134,17 +130,15 @@ int main(void) {
                 last_crash_trigger = now;
             }
 
-            // 5. Temperature increases slowly
             temperature += 0.2f;
-            if (temperature > 28.0f) temperature = 22.0f;  // reset loop
-            uint16_t temp_fixed = (uint16_t)(temperature * 256);  // fixed-point 8.8
+            if (temperature > 28.0f) temperature = 22.0f;
+            uint16_t temp_fixed = (uint16_t)(temperature * 256);
             uint8_t temp_data[2] = { (temp_fixed >> 8) & 0xFF, temp_fixed & 0xFF };
             mcp2515_send_message(&hspi1, 0x140, temp_data, 2);
             char tmpbuf[32];
             sprintf(tmpbuf, "Sent 0x140: Temperature %.1f°C\r\n", temperature);
             uart_print(tmpbuf);
 
-            // 6. Blinker LEFT / RIGHT toggle
             uint8_t blinker[1] = { toggle };
             mcp2515_send_message(&hspi1, 0x150, blinker, 1);
             uart_print(toggle ? "Sent 0x150: Blinker RIGHT\r\n" : "Sent 0x150: Blinker LEFT\r\n");
@@ -153,7 +147,19 @@ int main(void) {
             last_send_time = now;
         }
 
-        // Reception (unchanged)
+        // 🆕 Button B1 logic (PC13 is LOW when pressed)
+        if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+            if (!button_sent) {
+                uint8_t button_msg[1] = { 0x01 };
+                mcp2515_send_message(&hspi1, 0x160, button_msg, 1);
+                uart_print("Sent 0x160: B1 Pressed\r\n");
+                button_sent = 1;
+            }
+        } else {
+            button_sent = 0;  // reset so next press sends again
+        }
+
+        // CAN reception
         uint8_t status = mcp2515_read_status(&hspi1);
         if (status & 0x01) {
             buffer_rx_frame(
