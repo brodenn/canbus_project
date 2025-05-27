@@ -8,7 +8,7 @@ import os
 app = Flask(__name__)
 buffer = deque(maxlen=100)
 
-# Label mapping
+# ✅ Fixed label for consistency with frontend
 ID_LABELS = {
     "0x321": "STM32 Test",
     "0x110": "High Beam",
@@ -16,7 +16,7 @@ ID_LABELS = {
     "0x130": "Crash Trigger",
     "0x140": "Temperature Sensor",
     "0x150": "Blinker",
-    "0x160": "Button B1 Pressed"  # ✅ NEW ENTRY
+    "0x160": "Button B1"  # ✅ FIXED: matches frontend filter and dashboard logic
 }
 
 # Ensure logs folder exists
@@ -40,7 +40,7 @@ def log_to_csv(msg):
         ])
 
 def can_listener():
-    bus = can.interface.Bus(channel='can0', interface='socketcan')  # Updated interface param
+    bus = can.interface.Bus(channel='can0', interface='socketcan')  # Using 'interface' per newer python-can versions
     while True:
         msg = bus.recv()
         entry = {
