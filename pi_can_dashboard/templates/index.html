@@ -79,10 +79,27 @@
       max-height: 400px;
       overflow-y: auto;
     }
+
+    #ledToggleBtn {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+
+    #ledToggleBtn:hover {
+      background-color: #0056b3;
+    }
   </style>
 </head>
 <body>
   <h2>🚗 Live CAN Module Status</h2>
+
+  <button id="ledToggleBtn">💡 Toggle LED</button>
 
   <div class="dashboard" id="statusTiles"></div>
 
@@ -202,6 +219,15 @@
     document.getElementById("filter").addEventListener("change", updateMessages);
     updateMessages();
     setInterval(updateMessages, 500);
+
+    // LED toggle button
+    document.getElementById("ledToggleBtn").addEventListener("click", () => {
+      fetch("/api/led", { method: "POST" })
+        .then(res => {
+          if (res.ok) console.log("LED toggle sent");
+          else console.error("LED toggle failed");
+        });
+    });
   </script>
 </body>
 </html>

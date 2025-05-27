@@ -3,13 +3,14 @@
 #include <string.h>
 #include <stdio.h>
 
-#define MCP_RXB1CTRL      0x70
-#define MCP_RXB1SIDH      0x71
-#define MCP_RXB1SIDL      0x72
-#define MCP_RXB1DLC       0x75
-#define MCP_RXB1D0        0x76
+#define MCP_RXB1CTRL  0x70
+#define MCP_RXB1SIDH  0x71
+#define MCP_RXB1SIDL  0x72
+#define MCP_RXB1DLC   0x75
+#define MCP_RXB1D0    0x76
 
 #define CAN_RX_BUFFER_SIZE 32
+#define LED_CAN_ID 0x170
 
 typedef struct {
     uint16_t id;
@@ -67,7 +68,6 @@ void print_rx_frame(const CanRxFrame* frame) {
     char buf[64];
     sprintf(buf, "RX Buffered: ID=0x%03X DLC=%d Data: ", frame->id, frame->dlc);
     uart_print(buf);
-
     for (uint8_t i = 0; i < frame->dlc; i++) {
         char hex[4];
         byte_to_hex(frame->data[i], hex);
@@ -75,6 +75,18 @@ void print_rx_frame(const CanRxFrame* frame) {
         uart_print(" ");
     }
     uart_print("\r\n");
+}
+
+void handle_rx_frame(const CanRxFrame* frame) {
+    if (frame->id == LED_CAN_ID && frame->dlc >= 1) {
+        if (frame->data[0]) {
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+            uart_print("🟢 LED ON (via 0x170)\r\n");
+        } else {
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+            uart_print("⚪ LED OFF (via 0x170)\r\n");
+        }
+    }
 }
 
 int main(void) {
@@ -93,16 +105,11 @@ int main(void) {
     mcp2515_set_mode(&hspi1, MODE_NORMAL);
     uart_print("MCP2515 ready in NORMAL mode.\r\n");
 
-    uint8_t counter = 0;
-    uint8_t toggle = 0;
+    uint8_t counter = 0, toggle = 0;
     float temperature = 22.0;
     float battery_voltage = 11.8;
-    uint32_t last_send_time = 0;
-    uint32_t last_crash_trigger = 0;
-
-    // === Button Toggle State ===
-    uint8_t button_sent = 0;
-    uint8_t b1_state = 0;
+    uint32_t last_send_time = 0, last_crash_trigger = 0;
+    uint8_t button_sent = 0, b1_state = 0;
 
     while (1) {
         uint32_t now = HAL_GetTick();
@@ -150,7 +157,7 @@ int main(void) {
             last_send_time = now;
         }
 
-        // 🟢 B1 Button Toggle (PC13 active-low)
+        // 🟢 B1 Toggle Button
         if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
             if (!button_sent) {
                 b1_state ^= 1;
@@ -163,7 +170,7 @@ int main(void) {
             button_sent = 0;
         }
 
-        // Receive CAN
+        // 📨 RX
         uint8_t status = mcp2515_read_status(&hspi1);
         if (status & 0x01) {
             buffer_rx_frame(
@@ -186,7 +193,9 @@ int main(void) {
         }
 
         while (can_rx_tail != can_rx_head) {
-            print_rx_frame(&can_rx_buffer[can_rx_tail]);
+            CanRxFrame* f = (CanRxFrame*)&can_rx_buffer[can_rx_tail];
+            print_rx_frame(f);
+            handle_rx_frame(f);  // 🔁 Check for LED control command
             can_rx_tail = (can_rx_tail + 1) % CAN_RX_BUFFER_SIZE;
         }
 
