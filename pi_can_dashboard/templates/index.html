@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>CAN Monitor</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -36,14 +35,6 @@
       margin-bottom: 10px;
       padding: 6px;
       font-size: 16px;
-    }
-
-    #chartContainer {
-      margin-top: 30px;
-      background: #fff;
-      padding: 16px;
-      border-radius: 8px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
 
     .dashboard {
@@ -110,36 +101,8 @@
 
   <div id="output"></div>
 
-  <div id="chartContainer" style="display: none;">
-    <h3>🌡️ Live Temperature Chart</h3>
-    <canvas id="tempChart" width="600" height="300"></canvas>
-  </div>
-
   <script>
-    const ctx = document.getElementById('tempChart').getContext('2d');
-    const tempChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Temperature (°C)',
-          data: [],
-          borderColor: '#17a2b8',
-          tension: 0.3,
-          pointRadius: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { title: { display: true, text: 'Time' } },
-          y: { title: { display: true, text: '°C' }, suggestedMin: 0, suggestedMax: 60 }
-        }
-      }
-    });
-
     const lastSeen = {};
-    let tempGraphCounter = 0;
     let b1ToggleState = 0;
 
     function formatTimestamp(ts) {
@@ -156,12 +119,6 @@
       if (label.includes("Blinker")) return "Blinker";
       if (label.includes("Button B1")) return "B1";
       return "Unknown";
-    }
-
-    function hexToTemperature(hexString) {
-      if (hexString.length !== 4) return null;
-      const raw = parseInt(hexString, 16);
-      return (raw / 256).toFixed(2);
     }
 
     function updateDashboard(data) {
@@ -194,14 +151,12 @@
           tiles[label].status = "🔴 CRASH!";
           tiles[label].class = "red";
         } else if (label === "Temperature Sensor") {
-          const temp = hexToTemperature(msg.data);
-          tiles[label].status = `${temp} °C`;
+          tiles[label].status = `${parseInt(msg.data, 16) / 256} °C`;
           tiles[label].class = "blue";
         } else if (label === "Blinker") {
           tiles[label].status = msg.data === "01" ? "➡️ RIGHT" : "⬅️ LEFT";
           tiles[label].class = "blue";
         } else if (label === "Button B1") {
-          // ✅ Toggle on every new message (regardless of value)
           b1ToggleState ^= 1;
           tiles[label].status = b1ToggleState ? "PRESSED" : "Released";
           tiles[label].class = b1ToggleState ? "green" : "gray";
@@ -220,8 +175,6 @@
 
     function updateMessages() {
       const selected = document.getElementById("filter").value;
-      const showChart = selected === "Temperature Sensor";
-      document.getElementById("chartContainer").style.display = showChart ? "block" : "none";
 
       fetch("/api/can")
         .then(res => res.json())
@@ -237,23 +190,6 @@
                 ID: ${m.id} = ${m.data}
               </div>
             `).join("");
-
-          if (showChart) {
-            const tempMsgs = data.filter(m => m.label === "Temperature Sensor");
-            tempMsgs.forEach(m => {
-              const t = hexToTemperature(m.data);
-              if (t !== null) {
-                const ts = formatTimestamp(m.timestamp) + "." + tempGraphCounter++;
-                tempChart.data.labels.push(ts);
-                tempChart.data.datasets[0].data.push(t);
-                if (tempChart.data.labels.length > 25) {
-                  tempChart.data.labels.shift();
-                  tempChart.data.datasets[0].data.shift();
-                }
-              }
-            });
-            tempChart.update();
-          }
         });
     }
 
@@ -262,15 +198,7 @@
       updateMessages();
     }
 
-    document.getElementById("filter").addEventListener("change", () => {
-      tempGraphCounter = 0;
-      if (tempChart) {
-        tempChart.data.labels = [];
-        tempChart.data.datasets[0].data = [];
-        tempChart.update();
-      }
-      updateMessages();
-    });
+    document.getElementById("filter").addEventListener("change", updateMessages);
 
     updateMessages();
     setInterval(updateMessages, 500);
