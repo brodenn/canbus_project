@@ -10,7 +10,8 @@
 #define MCP_RXB1D0    0x76
 
 #define CAN_RX_BUFFER_SIZE 32
-#define LED_CAN_ID 0x170
+#define LED_CONTROL_ID  0x170
+#define LED_STATUS_ID   0x171
 
 typedef struct {
     uint16_t id;
@@ -78,7 +79,7 @@ void print_rx_frame(const CanRxFrame* frame) {
 }
 
 void handle_rx_frame(const CanRxFrame* frame) {
-    if (frame->id == LED_CAN_ID && frame->dlc >= 1) {
+    if (frame->id == LED_CONTROL_ID && frame->dlc >= 1) {
         if (frame->data[0]) {
             HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
             uart_print("🟢 LED ON (via 0x170)\r\n");
@@ -86,6 +87,9 @@ void handle_rx_frame(const CanRxFrame* frame) {
             HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
             uart_print("⚪ LED OFF (via 0x170)\r\n");
         }
+
+        uint8_t led_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) ? 0x01 : 0x00;
+        mcp2515_send_message(&hspi1, LED_STATUS_ID, &led_state, 1);
     }
 }
 
@@ -170,7 +174,7 @@ int main(void) {
             button_sent = 0;
         }
 
-        // 📨 RX
+        // Receive loop
         uint8_t status = mcp2515_read_status(&hspi1);
         if (status & 0x01) {
             buffer_rx_frame(
@@ -195,7 +199,7 @@ int main(void) {
         while (can_rx_tail != can_rx_head) {
             CanRxFrame* f = (CanRxFrame*)&can_rx_buffer[can_rx_tail];
             print_rx_frame(f);
-            handle_rx_frame(f);  // 🔁 Check for LED control command
+            handle_rx_frame(f);
             can_rx_tail = (can_rx_tail + 1) % CAN_RX_BUFFER_SIZE;
         }
 

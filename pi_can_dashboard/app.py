@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from threading import Thread
 import can
 from collections import deque
@@ -8,7 +8,12 @@ import os
 app = Flask(__name__)
 buffer = deque(maxlen=100)
 
-# ✅ Fixed label for consistency with frontend
+# CAN IDs
+LED_CONTROL_ID = 0x170
+LED_STATUS_ID = "0x171"
+led_state = 0
+
+# ID to label mapping
 ID_LABELS = {
     "0x321": "STM32 Test",
     "0x110": "High Beam",
@@ -16,14 +21,13 @@ ID_LABELS = {
     "0x130": "Crash Trigger",
     "0x140": "Temperature Sensor",
     "0x150": "Blinker",
-    "0x160": "Button B1"  # ✅ FIXED: matches frontend filter and dashboard logic
+    "0x160": "Button B1",
+    "0x171": "LED Status"
 }
 
-# Ensure logs folder exists
+# Log setup
 LOG_PATH = "logs/can_log.csv"
 os.makedirs("logs", exist_ok=True)
-
-# Create log file with header if it doesn't exist
 if not os.path.exists(LOG_PATH):
     with open(LOG_PATH, "w", newline='') as f:
         writer = csv.writer(f)
@@ -40,7 +44,8 @@ def log_to_csv(msg):
         ])
 
 def can_listener():
-    bus = can.interface.Bus(channel='can0', interface='socketcan')  # Using 'interface' per newer python-can versions
+    global led_state
+    bus = can.interface.Bus(channel='can0', interface='socketcan')
     while True:
         msg = bus.recv()
         entry = {
@@ -48,6 +53,11 @@ def can_listener():
             "data": msg.data.hex(),
             "timestamp": msg.timestamp
         }
+
+        # Track LED state
+        if entry["id"] == LED_STATUS_ID and len(msg.data) > 0:
+            led_state = msg.data[0]
+
         buffer.append(entry)
         log_to_csv(entry)
 
@@ -65,6 +75,18 @@ def api_can():
             "timestamp": msg["timestamp"]
         }
     return jsonify([label_msg(m) for m in buffer])
+
+@app.route("/api/led", methods=["POST"])
+def toggle_led():
+    global led_state
+    bus = can.interface.Bus(channel='can0', interface='socketcan')
+    new_state = 0 if led_state else 1
+    msg = can.Message(arbitration_id=LED_CONTROL_ID, data=[new_state], is_extended_id=False)
+    try:
+        bus.send(msg)
+        return "", 204
+    except can.CanError:
+        return "CAN send failed", 500
 
 if __name__ == "__main__":
     Thread(target=can_listener, daemon=True).start()

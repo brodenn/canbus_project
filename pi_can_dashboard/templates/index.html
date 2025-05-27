@@ -29,6 +29,7 @@
     .Temp { background-color: #17a2b8; }
     .Blinker { background-color: #6f42c1; }
     .B1 { background-color: #28a745; }
+    .LED { background-color: #ff9900; }
     .Unknown { background-color: #aaa; }
 
     #filter {
@@ -91,8 +92,12 @@
       cursor: pointer;
     }
 
+    #ledToggleBtn.on {
+      background-color: #28a745;
+    }
+
     #ledToggleBtn:hover {
-      background-color: #0056b3;
+      opacity: 0.9;
     }
   </style>
 </head>
@@ -113,6 +118,7 @@
     <option value="Temperature Sensor">Temperature Sensor</option>
     <option value="Blinker">Blinker</option>
     <option value="Button B1">Button B1</option>
+    <option value="LED Status">LED Status</option>
   </select>
   <button onclick="resetFilter()">Reset</button>
 
@@ -121,6 +127,7 @@
   <script>
     const lastSeen = {};
     let b1ToggleState = 0;
+    let ledState = 0;
 
     function formatTimestamp(ts) {
       const d = new Date(ts * 1000);
@@ -135,6 +142,7 @@
       if (label.includes("Temperature")) return "Temp";
       if (label.includes("Blinker")) return "Blinker";
       if (label.includes("Button B1")) return "B1";
+      if (label.includes("LED Status")) return "LED";
       return "Unknown";
     }
 
@@ -147,7 +155,8 @@
         "Crash Trigger": { icon: "💥", status: "OK", class: "green" },
         "Temperature Sensor": { icon: "🌡️", status: "?", class: "gray" },
         "Blinker": { icon: "🔁", status: "Unknown", class: "gray" },
-        "Button B1": { icon: "🟢", status: b1ToggleState ? "PRESSED" : "Released", class: b1ToggleState ? "green" : "gray" }
+        "Button B1": { icon: "🟢", status: b1ToggleState ? "PRESSED" : "Released", class: b1ToggleState ? "green" : "gray" },
+        "LED Status": { icon: "💡", status: ledState ? "ON" : "OFF", class: ledState ? "green" : "gray" }
       };
 
       data.forEach(msg => {
@@ -178,8 +187,17 @@
           b1ToggleState ^= 1;
           tiles[label].status = b1ToggleState ? "PRESSED" : "Released";
           tiles[label].class = b1ToggleState ? "green" : "gray";
+        } else if (label === "LED Status") {
+          ledState = msg.data === "01" ? 1 : 0;
+          tiles[label].status = ledState ? "ON" : "OFF";
+          tiles[label].class = ledState ? "green" : "gray";
         }
       });
+
+      // Update LED button text/state
+      const ledBtn = document.getElementById("ledToggleBtn");
+      ledBtn.textContent = ledState ? "💡 Turn OFF LED" : "💡 Turn ON LED";
+      ledBtn.className = ledState ? "on" : "";
 
       const tileDiv = document.getElementById("statusTiles");
       tileDiv.innerHTML = Object.entries(tiles).map(([label, val]) => `
@@ -217,10 +235,6 @@
     }
 
     document.getElementById("filter").addEventListener("change", updateMessages);
-    updateMessages();
-    setInterval(updateMessages, 500);
-
-    // LED toggle button
     document.getElementById("ledToggleBtn").addEventListener("click", () => {
       fetch("/api/led", { method: "POST" })
         .then(res => {
@@ -228,6 +242,9 @@
           else console.error("LED toggle failed");
         });
     });
+
+    updateMessages();
+    setInterval(updateMessages, 500);
   </script>
 </body>
 </html>
