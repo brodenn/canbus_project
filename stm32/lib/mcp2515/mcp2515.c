@@ -46,7 +46,7 @@ uint8_t mcp2515_read_register(SPI_HandleTypeDef* hspi, uint8_t reg) {
     return result;
 }
 
-// --- Bit modify (mask + write bits) ---
+// --- Bit modify ---
 void mcp2515_bit_modify(SPI_HandleTypeDef* hspi, uint8_t reg, uint8_t mask, uint8_t data) {
     mcp_select();
     mcp_transfer(hspi, MCP_BITMOD);
@@ -56,7 +56,7 @@ void mcp2515_bit_modify(SPI_HandleTypeDef* hspi, uint8_t reg, uint8_t mask, uint
     mcp_deselect();
 }
 
-// --- Read status (TX/RX flags etc.) ---
+// --- Read status ---
 uint8_t mcp2515_read_status(SPI_HandleTypeDef* hspi) {
     mcp_select();
     mcp_transfer(hspi, MCP_READ_STATUS);
@@ -65,21 +65,26 @@ uint8_t mcp2515_read_status(SPI_HandleTypeDef* hspi) {
     return status;
 }
 
-// --- Set operating mode ---
-void mcp2515_set_mode(SPI_HandleTypeDef* hspi, uint8_t mode) {
+// --- Set operating mode with timeout ---
+bool mcp2515_set_mode(SPI_HandleTypeDef* hspi, uint8_t mode) {
     mcp2515_bit_modify(hspi, MCP_CANCTRL, 0xE0, mode);
     HAL_Delay(10);
-    while ((mcp2515_read_register(hspi, MCP_CANSTAT) & 0xE0) != mode);
+
+    uint32_t timeout = HAL_GetTick() + 500;
+    while ((mcp2515_read_register(hspi, MCP_CANSTAT) & 0xE0) != mode) {
+        if (HAL_GetTick() > timeout) {
+            return false;
+        }
+    }
+    return true;
 }
 
-// --- MCP2515 Initialization ---
-void mcp2515_init(SPI_HandleTypeDef* hspi) {
+// --- Initialization ---
+bool mcp2515_init(SPI_HandleTypeDef* hspi) {
     mcp2515_reset(hspi);
+    if (!mcp2515_set_mode(hspi, MODE_CONFIG)) return false;
 
-    // Enter config mode
-    mcp2515_set_mode(hspi, MODE_CONFIG);
-
-    // Set bit timing (for 500 kbps @ 16 MHz crystal)
+    // Bit timing (500 kbps @ 16 MHz)
     mcp2515_write_register(hspi, MCP_CNF1, 0x00);
     mcp2515_write_register(hspi, MCP_CNF2, 0x90);
     mcp2515_write_register(hspi, MCP_CNF3, 0x02);
@@ -87,15 +92,10 @@ void mcp2515_init(SPI_HandleTypeDef* hspi) {
     // Enable RX interrupts
     mcp2515_write_register(hspi, MCP_CANINTE, 0x03); // RX0IE | RX1IE
 
-    // Stay in normal mode by default (set externally later)
+    return true;
 }
 
-// --- Send one test CAN frame ---
-void mcp2515_send_test_frame(SPI_HandleTypeDef* hspi) {
-    mcp2515_send_message(hspi, 0x123, (uint8_t[]){0x01, 0x02, 0x03, 0x04}, 4);
-}
-
-// --- Send custom CAN message (standard ID, up to 8 data bytes) ---
+// --- Send CAN message ---
 void mcp2515_send_message(SPI_HandleTypeDef* hspi, uint16_t id, uint8_t* data, uint8_t len) {
     if (len > 8) len = 8;
 
@@ -113,4 +113,25 @@ void mcp2515_send_message(SPI_HandleTypeDef* hspi, uint16_t id, uint8_t* data, u
     mcp_select();
     mcp_transfer(hspi, MCP_RTS_TX0);
     mcp_deselect();
+}
+
+// --- Receive CAN message from RXB0 ---
+bool mcp2515_receive_message(SPI_HandleTypeDef* hspi, uint16_t* id, uint8_t* data, uint8_t* len) {
+    uint8_t canintf = mcp2515_read_register(hspi, MCP_CANINTF);
+    if ((canintf & 0x01) == 0) return false; // RX0IF not set
+
+    uint8_t sidh = mcp2515_read_register(hspi, MCP_RXB0SIDH);
+    uint8_t sidl = mcp2515_read_register(hspi, MCP_RXB0SIDL);
+    *id = ((uint16_t)sidh << 3) | (sidl >> 5);
+
+    *len = mcp2515_read_register(hspi, MCP_RXB0DLC) & 0x0F;
+    if (*len > 8) *len = 8;
+
+    for (uint8_t i = 0; i < *len; i++) {
+        data[i] = mcp2515_read_register(hspi, MCP_RXB0D0 + i);
+    }
+
+    // Clear RX0IF
+    mcp2515_bit_modify(hspi, MCP_CANINTF, 0x01, 0x00);
+    return true;
 }

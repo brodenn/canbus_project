@@ -1,99 +1,16 @@
 #include "stm32f4xx_hal.h"
 #include "mcp2515.h"
-#include <string.h>
-#include <stdio.h>
+#include "can_buffer.h"
+#include "uart_log.h"
+#include "utils.h"
 
-#define MCP_RXB1CTRL  0x70
-#define MCP_RXB1SIDH  0x71
-#define MCP_RXB1SIDL  0x72
-#define MCP_RXB1DLC   0x75
-#define MCP_RXB1D0    0x76
-
-#define CAN_RX_BUFFER_SIZE 32
-#define LED_CONTROL_ID  0x170
-#define LED_STATUS_ID   0x171
-
-typedef struct {
-    uint16_t id;
-    uint8_t dlc;
-    uint8_t data[8];
-} CanRxFrame;
-
-volatile CanRxFrame can_rx_buffer[CAN_RX_BUFFER_SIZE];
-volatile uint8_t can_rx_head = 0;
-volatile uint8_t can_rx_tail = 0;
-
-UART_HandleTypeDef huart2;
-SPI_HandleTypeDef hspi1;
+extern UART_HandleTypeDef huart2;
+extern SPI_HandleTypeDef hspi1;
 
 void SystemClock_Config(void);
-void MX_USART2_UART_Init(void);
 void MX_GPIO_Init(void);
+void MX_USART2_UART_Init(void);
 void MX_SPI1_Init(void);
-
-void uart_print(const char* msg) {
-    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-}
-
-void byte_to_hex(uint8_t byte, char* str) {
-    const char hex[] = "0123456789ABCDEF";
-    str[0] = hex[(byte >> 4) & 0x0F];
-    str[1] = hex[byte & 0x0F];
-    str[2] = '\0';
-}
-
-void SysTick_Handler(void) {
-    HAL_IncTick();
-    HAL_SYSTICK_IRQHandler();
-}
-
-void buffer_rx_frame(uint8_t sidh, uint8_t sidl, uint8_t dlc, uint8_t base_reg) {
-    uint16_t id = ((sidh << 3) | (sidl >> 5)) & 0x7FF;
-    if (dlc == 0 || dlc > 8) return;
-
-    uint8_t next = (can_rx_head + 1) % CAN_RX_BUFFER_SIZE;
-    if (next == can_rx_tail) return;
-
-    CanRxFrame* frame = &can_rx_buffer[can_rx_head];
-    frame->id = id;
-    frame->dlc = dlc;
-
-    for (uint8_t i = 0; i < dlc; i++) {
-        frame->data[i] = mcp2515_read_register(&hspi1, base_reg + i);
-    }
-
-    can_rx_head = next;
-}
-
-void print_rx_frame(const CanRxFrame* frame) {
-    char buf[64];
-    sprintf(buf, "RX Buffered: ID=0x%03X DLC=%d Data: ", frame->id, frame->dlc);
-    uart_print(buf);
-    for (uint8_t i = 0; i < frame->dlc; i++) {
-        char hex[4];
-        byte_to_hex(frame->data[i], hex);
-        uart_print(hex);
-        uart_print(" ");
-    }
-    uart_print("\r\n");
-}
-
-void handle_rx_frame(const CanRxFrame* frame) {
-    if (frame->id == LED_CONTROL_ID && frame->dlc >= 1) {
-        if (frame->data[0]) {
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-            uart_print("🟢 LD2 ON (via 0x170)\r\n");
-        } else {
-            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-            uart_print("⚪ LD2 OFF (via 0x170)\r\n");
-        }
-
-        // Respond with actual LED state
-        uint8_t led_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) ? 0x01 : 0x00;
-        mcp2515_send_message(&hspi1, LED_STATUS_ID, &led_state, 1);
-        uart_print("↩️ Sent LED Status on 0x171\r\n");
-    }
-}
 
 int main(void) {
     HAL_Init();
@@ -106,14 +23,13 @@ int main(void) {
     uart_print("MCP2515 CAN TX/RX Setup...\r\n");
 
     mcp2515_init(&hspi1);
-    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60); // Enable RXB0 receive all
-    mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60); // Enable RXB1 receive all
+    mcp2515_write_register(&hspi1, MCP_RXB0CTRL, 0x60);
+    mcp2515_write_register(&hspi1, MCP_RXB1CTRL, 0x60);
     mcp2515_set_mode(&hspi1, MODE_NORMAL);
     uart_print("MCP2515 ready in NORMAL mode.\r\n");
 
     uint8_t counter = 0, toggle = 0;
-    float temperature = 22.0;
-    float battery_voltage = 11.8;
+    float temperature = 22.0, battery_voltage = 11.8;
     uint32_t last_send_time = 0, last_crash_trigger = 0;
     uint8_t button_sent = 0, b1_state = 0;
 
@@ -142,7 +58,7 @@ int main(void) {
             if ((rand() % 10) == 0 || (now - last_crash_trigger > 10000)) {
                 uint8_t crash_trigger[2] = { 0xDE, 0xAD };
                 mcp2515_send_message(&hspi1, 0x130, crash_trigger, 2);
-                uart_print("Sent 0x130: Crash Trigger 🔴\r\n");
+                uart_print("Sent 0x130: Crash Trigger \xF0\x9F\x94\xB4\r\n");
                 last_crash_trigger = now;
             }
 
@@ -152,7 +68,7 @@ int main(void) {
             uint8_t temp_data[2] = { (temp_fixed >> 8) & 0xFF, temp_fixed & 0xFF };
             mcp2515_send_message(&hspi1, 0x140, temp_data, 2);
             char tmpbuf[32];
-            sprintf(tmpbuf, "Sent 0x140: Temperature %.1f°C\r\n", temperature);
+            sprintf(tmpbuf, "Sent 0x140: Temperature %.1f\xC2\xB0C\r\n", temperature);
             uart_print(tmpbuf);
 
             uint8_t blinker[1] = { toggle };
@@ -163,7 +79,6 @@ int main(void) {
             last_send_time = now;
         }
 
-        // Button B1 on PC13
         if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
             if (!button_sent) {
                 b1_state ^= 1;
@@ -176,7 +91,6 @@ int main(void) {
             button_sent = 0;
         }
 
-        // RX from CAN
         uint8_t status = mcp2515_read_status(&hspi1);
         if (status & 0x01) {
             buffer_rx_frame(
@@ -199,7 +113,7 @@ int main(void) {
         }
 
         while (can_rx_tail != can_rx_head) {
-            CanRxFrame* f = (CanRxFrame*)&can_rx_buffer[can_rx_tail];
+            CanRxFrame* f = &can_rx_buffer[can_rx_tail];
             print_rx_frame(f);
             handle_rx_frame(f);
             can_rx_tail = (can_rx_tail + 1) % CAN_RX_BUFFER_SIZE;

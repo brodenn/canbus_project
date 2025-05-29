@@ -2,6 +2,7 @@
 #define MCP2515_H
 
 #include "stm32f4xx_hal.h"
+#include <stdbool.h>
 
 // === MCP2515 Command Set ===
 #define MCP_RESET         0xC0
@@ -94,9 +95,10 @@ void mcp2515_write_register(SPI_HandleTypeDef* hspi, uint8_t reg, uint8_t value)
 uint8_t mcp2515_read_register(SPI_HandleTypeDef* hspi, uint8_t reg);
 void mcp2515_bit_modify(SPI_HandleTypeDef* hspi, uint8_t reg, uint8_t mask, uint8_t data);
 uint8_t mcp2515_read_status(SPI_HandleTypeDef* hspi);
-void mcp2515_set_mode(SPI_HandleTypeDef* hspi, uint8_t mode);
-void mcp2515_init(SPI_HandleTypeDef* hspi);
+bool mcp2515_set_mode(SPI_HandleTypeDef* hspi, uint8_t mode);
+bool mcp2515_init(SPI_HandleTypeDef* hspi);
 void mcp2515_send_test_frame(SPI_HandleTypeDef* hspi);
 void mcp2515_send_message(SPI_HandleTypeDef* hspi, uint16_t id, uint8_t* data, uint8_t length);
+bool mcp2515_receive_message(SPI_HandleTypeDef* hspi, uint16_t* id, uint8_t* data, uint8_t* len);
 
 #endif // MCP2515_H

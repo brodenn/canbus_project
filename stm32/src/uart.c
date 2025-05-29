@@ -1,7 +1,9 @@
-#include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal.h"'
+#include "uart_log.h"
+#include <string.h>
 
-// Declare the UART handle as extern to use in this file
-extern UART_HandleTypeDef huart2;
+// UART-hanterare som används av andra filer
+UART_HandleTypeDef huart2;
 
 void MX_USART2_UART_Init(void) {
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -24,4 +26,9 @@ void MX_USART2_UART_Init(void) {
     huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
     huart2.Init.OverSampling = UART_OVERSAMPLING_16;
     HAL_UART_Init(&huart2);
+}
+
+// Enkel wrapper för att skicka text via UART
+void uart_print(const char* msg) {
+    HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 }
