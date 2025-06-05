@@ -1,6 +1,20 @@
 # canbus_project
 
+**[📄 Project Report: CAN Traffic Simulator and Driver Information Module (DIM)](docs/CAN%20Traffic%20Simulator%20and%20Driver%20Information%20Module%20(DIM)%20Project.pdf)**
+
 A demo project for CAN bus communication between an STM32 Nucleo board (with MCP2515 CAN controller) and a Raspberry Pi dashboard.
+
+---
+
+## Project Images
+
+**Hardware setup:**  
+![Hardware](docs/Hardware.png)
+
+**Web dashboard:**  
+![Webinterface](docs/webinterface.png)
+
+---
 
 ## Overview
 
@@ -41,8 +55,32 @@ pi_can_dashboard/
   └── templates/
       └── index.html # HTML template for the dashboard UI
 
+docs/
+  ├── CAN Traffic Simulator and Driver Information Module (DIM) Project.pdf # Project report
+  ├── Hardware.png      # Photo of hardware setup
+  └── webinterface.png  # Screenshot of web dashboard
+
 README.md
 ```
+
+### Module Explanations
+
+- **main.c**: Main application loop, CAN message logic, and periodic message sending.
+- **utils.c/h**: Helper functions for CAN, UART, and test message generation.
+- **can_buffer.c/h**: Implements a ring buffer for received CAN frames.
+- **interrupts.c/h**: Sets up and handles EXTI interrupts for the MCP2515 INT pin (PB3).
+- **spi.c**: Initializes SPI1 peripheral and configures MCP2515 chip select (CS) pin.
+- **uart.c/h, uart_log.h**: UART2 initialization and logging/print helpers for debugging.
+- **clock.c**: System clock configuration (HSI + PLL, 84 MHz).
+- **gpio.c**: GPIO initialization for LED, user button, and INT pin.
+- **stm32f4xx_it.c/h**: Core interrupt handlers (SysTick, EXTI3).
+- **lib/**: Contains the MCP2515 CAN controller driver (low-level SPI routines).
+- **include/**: Project-wide header files.
+- **test/**: PlatformIO unit tests for STM32 code.
+- **platformio.ini**: PlatformIO build configuration.
+- **pi_can_dashboard/app.py**: Flask web app for CAN monitoring and control.
+- **pi_can_dashboard/templates/index.html**: Web dashboard UI template.
+- **docs/**: Documentation, project report, and images.
 
 ## Getting Started
 
