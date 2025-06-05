@@ -14,21 +14,32 @@ A demo project for CAN bus communication between an STM32 Nucleo board (with MCP
 - UART logging for debugging.
 - Web dashboard with live status tiles, message log, and LED control.
 - CAN message logging to CSV.
+- **Interrupt-driven CAN RX**: Uses EXTI3 (PB3) for MCP2515 INT pin, with fallback polling.
+- Modular STM32 firmware: `main.c`, `utils.c`, `can_buffer.c`, `interrupts.c`, etc.
 
 ## Directory Structure
 
 ```
 stm32/
   ├── src/           # STM32 firmware source code
-  ├── lib/           # MCP2515 driver
-  ├── include/       # Project headers
-  ├── test/          # PlatformIO unit tests
-  └── platformio.ini # PlatformIO config
+  │   ├── main.c             # Main application loop and CAN message logic
+  │   ├── utils.c/h          # Utility functions for CAN, UART, and test message helpers
+  │   ├── can_buffer.c/h     # Ring buffer for received CAN frames
+  │   ├── interrupts.c/h     # EXTI interrupt setup and handler for MCP2515 INT pin (PB3)
+  │   ├── spi.c              # SPI1 peripheral and MCP2515 CS pin initialization
+  │   ├── uart.c/h, uart_log.h # UART2 initialization and logging/print helpers
+  │   ├── clock.c            # System clock configuration (84 MHz, HSI+PLL)
+  │   ├── gpio.c             # GPIO initialization (LED, button, INT pin)
+  │   └── stm32f4xx_it.c/h   # Core interrupt handlers (SysTick, EXTI3)
+  ├── lib/           # MCP2515 driver (low-level SPI routines for CAN controller)
+  ├── include/       # Project-wide header files
+  ├── test/          # PlatformIO unit tests for STM32 code
+  └── platformio.ini # PlatformIO build configuration
 
 pi_can_dashboard/
-  ├── app.py         # Flask web app
+  ├── app.py         # Flask web app: CAN interface, live dashboard, and control endpoints
   └── templates/
-      └── index.html # Dashboard UI
+      └── index.html # HTML template for the dashboard UI
 
 README.md
 ```
@@ -50,6 +61,9 @@ README.md
      ```sh
      pio device monitor
      ```
+4. **CAN Interrupt Setup**:
+   - MCP2515 INT pin must be connected to PB3 (EXTI3) on the Nucleo.
+   - The firmware supports both interrupt and polling for CAN RX.
 
 ### Raspberry Pi Dashboard
 
