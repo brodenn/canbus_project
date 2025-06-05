@@ -142,5 +142,3 @@ README.md
 MIT License
 
 ---
-
-For details, see [stm32/](stm32/) and [pi_can_dashboard/](pi_can_dashboard/).
