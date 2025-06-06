@@ -6,20 +6,22 @@ A demo project for CAN bus communication between an STM32 Nucleo board (with MCP
 
 ---
 
-## Project Images
-
-**Hardware setup:**  
-![Hardware](docs/Hardware.png)
-
-**Web dashboard:**  
-![Webinterface](docs/webinterface.png)
-
----
-
 ## Overview
 
 - **STM32 Firmware** ([stm32/](stm32/)): Sends and receives CAN messages using an MCP2515 over SPI. Periodically transmits test, status, and sensor messages, and responds to control messages (e.g., LED toggle).
 - **Raspberry Pi Dashboard** ([pi_can_dashboard/](pi_can_dashboard/)): Flask web app that monitors CAN traffic, displays live status, and allows remote control (e.g., toggling an LED on the STM32) via a web interface.
+
+---
+
+## Project Images
+
+**Hardware setup:**
+![Hardware](docs/Hardware.png)
+
+**Web dashboard:**
+![Webinterface](docs/webinterface.png)
+
+---
 
 ## Features
 
@@ -30,6 +32,8 @@ A demo project for CAN bus communication between an STM32 Nucleo board (with MCP
 - CAN message logging to CSV.
 - **Interrupt-driven CAN RX**: Uses EXTI3 (PB3) for MCP2515 INT pin, with fallback polling.
 - Modular STM32 firmware: `main.c`, `utils.c`, `can_buffer.c`, `interrupts.c`, etc.
+
+---
 
 ## Directory Structure
 
@@ -63,7 +67,9 @@ docs/
 README.md
 ```
 
-### Module Explanations
+---
+
+## Module Explanations
 
 - **main.c**: Main application loop, CAN message logic, and periodic message sending.
 - **utils.c/h**: Helper functions for CAN, UART, and test message generation.
@@ -81,6 +87,8 @@ README.md
 - **pi_can_dashboard/app.py**: Flask web app for CAN monitoring and control.
 - **pi_can_dashboard/templates/index.html**: Web dashboard UI template.
 - **docs/**: Documentation, project report, and images.
+
+---
 
 ## Getting Started
 
@@ -123,6 +131,8 @@ README.md
    ```
    - Open [http://localhost:5000](http://localhost:5000) in your browser.
 
+---
+
 ## CAN Message Map
 
 | ID     | Label             | Description                |
@@ -136,6 +146,8 @@ README.md
 | 0x160  | Button B1         | User button state          |
 | 0x170  | LED Control       | Toggle LED (from Pi)       |
 | 0x171  | LED Status        | LED state (from STM32)     |
+
+---
 
 ## License
 
